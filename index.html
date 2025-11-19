@@ -11,8 +11,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="src/styles.css">
 
-  <!-- favicon (make sure favicon.ico is next to this file) -->
+  <!-- favicon -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Vue (global build) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
   <style>
     .subject-icon { font-size: 2rem; width: 2.25rem; text-align: center; }
@@ -126,29 +129,31 @@
     </main>
   </div>
 
-  <!-- App logic (ESM) -->
+  <!-- App logic (module; uses global Vue and your src/api.js) -->
   <script type="module">
-    import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
-    import { fetchLessons } from './src/api.js';
+    import { fetchLessons, createOrder, updateLessonSpace } from './src/api.js';
+    const { createApp } = Vue; // from the global script in <head>
 
     createApp({
       data() {
         return {
           viewCart: false,
-          cart: [],
+          cart: [],                 // [{ id, topic, price, qty }]
           sortBy: 'topic',
           sortDir: 'asc',
           name: '',
           phone: '',
-          lessons: [],     // loaded from backend
+          lessons: [],              // loaded from backend
           error: ''
         };
       },
+
       mounted() {
         fetchLessons()
           .then(data => { this.lessons = data; })
           .catch(() => { this.error = 'Could not load lessons'; });
       },
+
       computed: {
         sortedLessons() {
           const key = this.sortBy;
@@ -160,10 +165,11 @@
           });
         },
         cleanPhone() { return (this.phone || '').replace(/[^\d]/g, '') },
-        validName() { return /^[A-Za-z\s'-]{2,}$/.test(this.name) },
+        validName()  { return /^[A-Za-z\s'-]{2,}$/.test(this.name) },
         validPhone() { const n = this.cleanPhone.length; return n >= 7 && n <= 15 },
-        canCheckout() { return this.cart.length > 0 && this.validName && this.validPhone }
+        canCheckout(){ return this.cart.length > 0 && this.validName && this.validPhone }
       },
+
       methods: {
         subjectIcon(topic) {
           const map = {
@@ -180,25 +186,50 @@
           };
           return map[topic] || 'fa-solid fa-book';
         },
+
         addToCart(lesson) {
           if (lesson.space === 0) return;
-          lesson.space -= 1;
+          lesson.space -= 1; // reflect locally
           const existing = this.cart.find(i => i.id === lesson.id);
           if (existing) existing.qty += 1;
           else this.cart.push({ id: lesson.id, topic: lesson.topic, price: lesson.price, qty: 1 });
         },
+
         removeFromCart(item) {
           const lesson = this.lessons.find(l => l.id === item.id);
           if (lesson) lesson.space += item.qty;
           this.cart = this.cart.filter(i => i.id !== item.id);
         },
+
+        // POST /orders then PUT /lessons/:id for each item
         checkout() {
           if (!this.canCheckout) return;
-          alert('Order submitted! (FE-only for now)');
-          this.cart = [];
-          this.name = '';
-          this.phone = '';
-          this.viewCart = false;
+          this.error = '';
+
+          const items = this.cart.map(c => ({ id: c.id, qty: c.qty || 1 }));
+
+          // 1) create order
+          createOrder({ name: this.name, phone: this.phone, items })
+            // 2) persist spaces sequentially
+            .then(() => {
+              return items.reduce((p, it) => {
+                return p.then(() => {
+                  const l = this.lessons.find(x => x.id === it.id);
+                  return l ? updateLessonSpace(l.id, l.space) : Promise.resolve();
+                });
+              }, Promise.resolve());
+            })
+            .then(() => {
+              alert('Order confirmed!');
+              this.cart = [];
+              this.name = '';
+              this.phone = '';
+              this.viewCart = false;
+            })
+            .catch(e => {
+              console.error(e);
+              this.error = e?.error || 'Checkout failed';
+            });
         }
       }
     }).mount('#app');
