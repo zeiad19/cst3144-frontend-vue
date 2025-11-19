@@ -1,8 +1,7 @@
 // src/api.js — local development
-// We’ll switch this to your Render URL after deployment.
 export const API_BASE = 'http://127.0.0.1:3000';
 
-// GET /lessons  -> Array of lessons
+// GET /lessons
 export function fetchLessons() {
   return fetch(`${API_BASE}/lessons`).then(res => {
     if (!res.ok) throw new Error('Failed to load lessons');
