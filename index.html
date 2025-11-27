@@ -41,17 +41,27 @@
     <!-- LESSON LIST -->
     <main v-if="!viewCart">
       <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <label class="me-1">Sort by:</label>
-        <select v-model="sortBy" class="form-select w-auto">
+        <label class="me-1 mb-0">Sort by:</label>
+        <select v-model="sortBy" class="form-select w-auto" aria-label="Sort lessons by">
           <option value="topic">Subject</option>
           <option value="location">Location</option>
           <option value="price">Price</option>
           <option value="space">Spaces</option>
         </select>
-        <select v-model="sortDir" class="form-select w-auto">
+        <select v-model="sortDir" class="form-select w-auto" aria-label="Sort direction">
           <option value="asc">Ascending</option>
           <option value="desc">Descending</option>
         </select>
+
+        <!-- Search box (search as you type) -->
+        <div class="ms-auto">
+          <input
+            v-model="searchTerm"
+            class="form-control"
+            placeholder="Search lessons..."
+            aria-label="Search lessons"
+          />
+        </div>
       </div>
 
       <div class="row g-3">
@@ -131,7 +141,13 @@
 
   <!-- App logic (module; uses global Vue and your src/api.js) -->
   <script type="module">
-    import { fetchLessons, createOrder, updateLessonSpace } from './src/api.js';
+    import {
+      fetchLessons,
+      createOrder,
+      updateLessonSpace,
+      searchLessons
+    } from './src/api.js';
+
     const { createApp } = Vue; // from the global script in <head>
 
     createApp({
@@ -144,14 +160,13 @@
           name: '',
           phone: '',
           lessons: [],              // loaded from backend
-          error: ''
+          error: '',
+          searchTerm: ''            // for search-as-you-type
         };
       },
 
       mounted() {
-        fetchLessons()
-          .then(data => { this.lessons = data; })
-          .catch(() => { this.error = 'Could not load lessons'; });
+        this.loadAllLessons();
       },
 
       computed: {
@@ -159,8 +174,11 @@
           const key = this.sortBy;
           const dir = this.sortDir === 'asc' ? 1 : -1;
           return [...this.lessons].sort((a, b) => {
-            const A = a[key], B = b[key];
-            if (typeof A === 'number' && typeof B === 'number') return (A - B) * dir;
+            const A = a[key];
+            const B = b[key];
+            if (typeof A === 'number' && typeof B === 'number') {
+              return (A - B) * dir;
+            }
             return String(A).localeCompare(String(B)) * dir;
           });
         },
@@ -170,7 +188,46 @@
         canCheckout(){ return this.cart.length > 0 && this.validName && this.validPhone }
       },
 
+      watch: {
+        // search as you type
+        searchTerm(newValue) {
+          this.runSearch(newValue);
+        }
+      },
+
       methods: {
+        loadAllLessons() {
+          this.error = '';
+          fetchLessons()
+            .then(data => {
+              this.lessons = data;
+            })
+            .catch(err => {
+              console.error(err);
+              this.error = 'Could not load lessons';
+            });
+        },
+
+        runSearch(query) {
+          this.error = '';
+
+          const trimmed = (query || '').trim();
+          if (!trimmed) {
+            // empty search -> reload all
+            this.loadAllLessons();
+            return;
+          }
+
+          searchLessons(trimmed)
+            .then(data => {
+              this.lessons = data;
+            })
+            .catch(err => {
+              console.error(err);
+              this.error = 'Search failed';
+            });
+        },
+
         subjectIcon(topic) {
           const map = {
             'Mathematics': 'fa-solid fa-square-root-variable',
@@ -191,33 +248,58 @@
           if (lesson.space === 0) return;
           lesson.space -= 1; // reflect locally
           const existing = this.cart.find(i => i.id === lesson.id);
-          if (existing) existing.qty += 1;
-          else this.cart.push({ id: lesson.id, topic: lesson.topic, price: lesson.price, qty: 1 });
+          if (existing) {
+            existing.qty += 1;
+          } else {
+            this.cart.push({
+              id: lesson.id,
+              topic: lesson.topic,
+              price: lesson.price,
+              qty: 1
+            });
+          }
         },
 
         removeFromCart(item) {
           const lesson = this.lessons.find(l => l.id === item.id);
-          if (lesson) lesson.space += item.qty;
+          if (lesson) {
+            lesson.space += item.qty;
+          }
           this.cart = this.cart.filter(i => i.id !== item.id);
         },
 
-        // POST /orders then PUT /lessons/:id for each item
+        // POST /orders then try to PUT /lessons/:id for each item
         checkout() {
           if (!this.canCheckout) return;
+
           this.error = '';
 
           const items = this.cart.map(c => ({ id: c.id, qty: c.qty || 1 }));
 
           // 1) create order
           createOrder({ name: this.name, phone: this.phone, items })
-            // 2) persist spaces sequentially
-            .then(() => {
-              return items.reduce((p, it) => {
-                return p.then(() => {
-                  const l = this.lessons.find(x => x.id === it.id);
-                  return l ? updateLessonSpace(l.id, l.space) : Promise.resolve();
-                });
-              }, Promise.resolve());
+            .then(orderResult => {
+              console.log('Order created:', orderResult);
+
+              // 2) update lesson spaces (do not fail checkout if PUT fails)
+              const updates = this.cart.map(c => {
+                const lesson = this.lessons.find(l => l.id === c.id);
+                if (!lesson) {
+                  console.warn('No lesson found for cart item', c);
+                  return Promise.resolve();
+                }
+
+                return updateLessonSpace(lesson.id, lesson.space)
+                  .then(res => {
+                    console.log('Updated lesson space:', res);
+                  })
+                  .catch(err => {
+                    console.error('Failed to update lesson space for', lesson.id, err);
+                    // swallow error so checkout still completes
+                  });
+              });
+
+              return Promise.all(updates);
             })
             .then(() => {
               alert('Order confirmed!');
@@ -227,8 +309,8 @@
               this.viewCart = false;
             })
             .catch(e => {
-              console.error(e);
-              this.error = e?.error || 'Checkout failed';
+              console.error('Checkout error:', e);
+              this.error = e?.error || e?.message || 'Checkout failed';
             });
         }
       }
