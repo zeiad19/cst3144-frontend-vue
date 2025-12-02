@@ -32,7 +32,7 @@ export function searchLessons(query) {
 
 /**
  * POST /orders
- * orderData: { name, phone, items: [{ id, qty }] }
+  * Create a new order.
  */
 export function createOrder(orderData) {
   return fetch(`${API_BASE_URL}/orders`, {
@@ -56,7 +56,7 @@ export function createOrder(orderData) {
 
 /**
  * PUT /lessons/:id
- * body: { space: number }
+ * Update the space of a lesson.
  */
 export function updateLessonSpace(id, space) {
   return fetch(`${API_BASE_URL}/lessons/${encodeURIComponent(id)}`, {
