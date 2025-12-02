@@ -1,7 +1,7 @@
 // src/api.js
 
-// TODO: change this to your Render/AWS URL when deployed
-const API_BASE_URL = "http://localhost:3000";
+// Now pointing to deployed backend on Render
+const API_BASE_URL = "https://cst3144-express-api.onrender.com";
 
 /**
  * GET /lessons
