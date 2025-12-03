@@ -7,17 +7,17 @@ It communicates with my deployed Express API using `fetch` and promises only.
 
 ---
 
-## 🌐 Live Site
+##  Live Site
 https://zeiad19.github.io/cst3144-frontend-vue/
 
 ---
 
-## 🔗 Connected API
+##  Connected API
 https://cst3144-express-api.onrender.com
 
 ---
 
-## 📌 Features
+##  Features
 
 ### Lessons
 - Fetch all lessons from the API  
@@ -36,13 +36,13 @@ https://cst3144-express-api.onrender.com
 
 ---
 
-## ▶ Running locally
+##  Running locally
 Just open `index.html` with Live Server (recommended).  
 Opening directly from file explorer disables fetch due to CORS.
 
 ---
 
-## 📦 Included in submission
+##  Included in submission
 - index.html  
 - src/api.js  
 - src/styles.css  
